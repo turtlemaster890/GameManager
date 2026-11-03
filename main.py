@@ -1,27 +1,13 @@
+import os
+
 import discord
-from games.Games import Games
-from games.GameManager import GameManager
+from dotenv import load_dotenv
 
-# bot = discord.Bot()
+from bot import GameBot
 
-class GameBot(discord.Bot):
-    # games: dict[str, type[GameProtocol]] = {
-    #     "Uno": Uno
-    # }
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.managers: list[GameManager] = []
+intents = discord.Intents.default()
+bot = GameBot(intents=intents)
 
-    # @discord.event
-    # async def on_ready():
-    #     print(f"{bot.user} online")
 
-    # async def get_games(self, ctx: discord.AutocompleteContext):
-    #     return self.games
-
-    @discord.slash_command(name="makeroom", description="Make a game room")
-    async def makeRoom(
-        ctx: discord.ApplicationContext,
-        game: discord.Option(Games)
-    ):
-        manager = GameManager(game)
+load_dotenv()
+bot.bot.run(os.getenv("TOKEN"))
