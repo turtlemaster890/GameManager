@@ -4,18 +4,6 @@ from games.GameManager import GameManager
 from games.Games import Games
 
 
-class LobbyView(discord.ui.BaseView):
-    def __init__(self, manager: GameManager, *items, **kwargs):
-        super().__init__(*items, **kwargs)
-        self.manager = manager
-
-    @discord.ui.button(label="Join Lobby", style=discord.ButtonStyle.primary)
-    async def join_lobby(self, button, interaction: discord.interactions.Interaction):
-        if not isinstance(interaction.user, discord.Member):
-            return
-        self.manager.add_player(interaction.user)
-
-
 class GameBot:
     def __init__(self, intents: discord.Intents) -> None:
         self.managers: list[GameManager] = []
@@ -37,8 +25,6 @@ class GameBot:
                 return
             manager = GameManager(game.value(), ctx.user)
             self.managers.append(manager)
-            embed = manager.make_embed()
-            view = LobbyView(manager)
-            await ctx.respond(embed=embed, view=view)
+            await manager.send_embed(ctx)
 
         return bot

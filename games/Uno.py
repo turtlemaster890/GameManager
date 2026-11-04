@@ -1,4 +1,6 @@
 from .GameProtocol import GameProtocol
+
+
 class UnoGame(GameProtocol):
     name = "Uno"
     minPlayers = 4
