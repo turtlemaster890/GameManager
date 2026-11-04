@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import Callable
+
+from collections.abc import Callable
 
 import discord
 from discord.interactions import Interaction
@@ -139,6 +140,10 @@ class GameManager:
         if self.started:
             return
 
+        if self.game.minPlayers and len(self.players) < self.game.minPlayers:
+            await interaction.followup.send("Not enough players!", ephemeral=True)
+            return
+
         if self.game.maxPlayers and len(self.players) > self.game.maxPlayers:
             await interaction.followup.send("Too many players!", ephemeral=True)
             return
@@ -168,7 +173,7 @@ class GameManager:
         if self.view:
             self.view.stop()
         if self.lobby_message:
-            await self.lobby_message.edit(content="", embed=None, view=None)
+            await self.lobby_message.edit(content="Started!", embed=None, view=None)
 
         await self.game.run()
 

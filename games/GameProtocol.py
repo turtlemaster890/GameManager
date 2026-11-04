@@ -15,6 +15,8 @@ class GameProtocol(Protocol):
 
     def __init__(self, manager: GameManager) -> None:
         self.manager = manager
+        self.setup()
 
-    async def run(self) -> None:
-        ...
+    def setup(self) -> None: ...
+
+    async def run(self) -> None: ...
