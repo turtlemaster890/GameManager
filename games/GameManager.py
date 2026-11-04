@@ -179,7 +179,7 @@ class GameManager:
 
     async def send(
         self,
-        content: str,
+        content: str | None = None,
         embed: discord.Embed | None = None,
         view: discord.ui.View | None = None,
     ):
