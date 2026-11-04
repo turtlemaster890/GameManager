@@ -6,7 +6,7 @@ from games.Games import Games
 
 class GameBot:
     def __init__(self, intents: discord.Intents) -> None:
-        self.managers: list[GameManager] = []
+        self.managers: set[GameManager] = set()
         self.bot = self.setup_bot(discord.Bot(intents=intents))
 
     def setup_bot(self, bot: discord.Bot):
@@ -23,8 +23,9 @@ class GameBot:
         async def make_room(ctx: discord.ApplicationContext, game: Games):
             if not isinstance(ctx.user, discord.Member):
                 return
-            manager = GameManager(game.value(), ctx.user)
-            self.managers.append(manager)
+            manager = GameManager(game.value, ctx.user)
+            manager.on_close = lambda: self.managers.discard(manager)
+            self.managers.add(manager)
             await manager.send_embed(ctx)
 
         return bot

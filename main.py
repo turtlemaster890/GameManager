@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 from bot import GameBot
 
-intents = discord.Intents.default()
+intents = discord.Intents.default() + discord.Intents.voice_states
 bot = GameBot(intents=intents)
 
 
