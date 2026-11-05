@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 
 import discord
@@ -70,7 +71,7 @@ class LobbyView(View):
         await interaction.response.defer(invisible=True)
         await self.manager.start_game(interaction, self.manager.cat)
 
-    @button(label="Close", style=discord.ButtonStyle.gray)
+    @button(label="Close", style=discord.ButtonStyle.gray, custom_id="lobby:close")
     async def close_lobby(self, button: Button, interaction: Interaction):
         if interaction.user != self.manager.host:
             await interaction.response.send_message(
@@ -81,8 +82,20 @@ class LobbyView(View):
         await self.manager.delete_embed()
 
 
+class LobbyCleanupView(View):
+    @button(label="Close", style=discord.ButtonStyle.gray, custom_id="lobby:close")
+    async def close_lobby(self, button: Button, interaction: Interaction):
+        if interaction.message:
+            await interaction.message.delete()
+
+
 class GameManager:
-    def __init__(self, game: type[GameProtocol], cat: discord.CategoryChannel, host: discord.Member | None = None):
+    def __init__(
+        self,
+        game: type[GameProtocol],
+        cat: discord.CategoryChannel,
+        host: discord.Member | None = None,
+    ):
         self.players: set[discord.Member] = set()
         self.lobby_message: discord.Message | discord.InteractionMessage | None = None
         self.voice_client: discord.VoiceClient | None = None
@@ -167,7 +180,11 @@ class GameManager:
             self.voice_client = await host_channel.connect(cls=discord.VoiceClient)
 
         if self.game.playerChannels:
-            self.cat_channel = await cat.create_text_channel(f"**{self.game.name}**")
+            self.cat_channel = await cat.create_text_channel(
+                f"-- 🎮 **{self.game.name}** 🎮 --"
+            )
+            assert self.host
+            await self.cat_channel.send(view=EndGameView(self.host))
             for player in self.players:
                 channel = await cat.create_text_channel(
                     f"{player.display_name}'s channel"
@@ -177,13 +194,23 @@ class GameManager:
                 overwrite.send_messages = False
                 overwrite.read_messages = False
                 overwrite.read_message_history = False
-                await channel.set_permissions(channel.guild.default_role, overwrite=overwrite)
+                await channel.set_permissions(
+                    channel.guild.default_role, overwrite=overwrite
+                )
                 overwrite = discord.PermissionOverwrite()
                 overwrite.view_channel = True
                 overwrite.send_messages = True
                 overwrite.read_messages = True
                 overwrite.read_message_history = True
                 await channel.set_permissions(player, overwrite=overwrite)
+                self.player_channels[player] = channel
+            with open("./guild_data.json", "r") as f:
+                data: dict[str, dict] = json.load(f)
+            data[str(self.cat.guild.id)].setdefault("game_channels", {})[
+                str(self.cat_channel.id)
+            ] = [c.id for c in self.player_channels.values()]
+            with open("./guild_data.json", "w") as f:
+                json.dump(data, f, indent=4)
 
         self.voice_channel = host_channel
         if interaction.channel:
@@ -249,3 +276,69 @@ class GameManager:
             await channel.send(content=content, view=view)
         else:
             await channel.send(content=content)
+
+
+class EndGameView(View):
+    def __init__(self, host: discord.Member):
+        super().__init__(timeout=0)
+        self.host = host
+
+    @button(
+        label="End Game",
+        emoji="🗑️",
+        style=discord.ButtonStyle.red,
+        custom_id="manager:end_game",
+    )
+    async def end_game(self, button: Button, interaction: Interaction):
+        await interaction.response.defer()
+        with open("./guild_data.json", "r") as f:
+            data: dict[str, dict] = json.load(f)
+        if data[str(interaction.guild_id)]["game_channels"][
+            str(interaction.channel_id)
+        ]:
+            channelIds = data[str(interaction.guild_id)]["game_channels"][
+                str(interaction.channel_id)
+            ]
+            assert interaction.guild
+            for channelId in channelIds:
+                channel = interaction.guild.get_channel(channelId)
+                if channel:
+                    await channel.delete()
+        if isinstance(interaction.channel, discord.TextChannel):
+            await interaction.channel.delete()
+        del data[str(interaction.guild_id)]["game_channels"][
+            str(interaction.channel_id)
+        ]
+        with open("./guild_data.json", "w") as f:
+            json.dump(data, f, indent=4)
+
+
+class GameCleanupView(View):
+    @button(
+        label="End Game",
+        emoji="🗑️",
+        style=discord.ButtonStyle.red,
+        custom_id="manager:end_game",
+    )
+    async def cleanup_game(self, button: Button, interaction: Interaction):
+        await interaction.response.defer()
+        with open("./guild_data.json", "r") as f:
+            data: dict[str, dict] = json.load(f)
+        if data[str(interaction.guild_id)]["game_channels"][
+            str(interaction.channel_id)
+        ]:
+            channelIds = data[str(interaction.guild_id)]["game_channels"][
+                str(interaction.channel_id)
+            ]
+            assert interaction.guild
+            for channelId in channelIds:
+                channel = interaction.guild.get_channel(channelId)
+                if channel:
+                    await channel.delete()
+        if isinstance(interaction.channel, discord.TextChannel):
+            await interaction.channel.delete()
+        del data[str(interaction.guild_id)]["game_channels"][
+            str(interaction.channel_id)
+        ]
+        with open("./guild_data.json", "w") as f:
+            json.dump(data, f, indent=4)

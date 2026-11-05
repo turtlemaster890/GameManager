@@ -2,7 +2,7 @@ import json
 
 import discord
 
-from games.GameManager import GameManager
+from games.GameManager import GameCleanupView, GameManager, LobbyCleanupView
 from games.Games import Games
 
 
@@ -15,6 +15,8 @@ class GameBot:
         @bot.event
         async def on_ready():
             print(f"{bot.user and bot.user.name} online")
+            bot.add_view(LobbyCleanupView(timeout=None))
+            bot.add_view(GameCleanupView(timeout=None))
 
         @bot.slash_command(
             name="gameroom",
@@ -28,21 +30,43 @@ class GameBot:
             with open("guild_data.json", "r") as f:
                 data: dict[str, dict] = json.load(f)
             if str(ctx.guild_id) not in data:
-                await ctx.response.send_message("Please set a category for games!")
+                await ctx.response.send_message(
+                    "Please set a category for games!", ephemeral=True
+                )
                 return
             guild_data = data[str(ctx.guild_id)]
             if not guild_data["category_channel"]:
-                await ctx.response.send_message("Please set a category for games!")
+                await ctx.response.send_message(
+                    "Please set a category for games!", ephemeral=True
+                )
                 return
             assert ctx.guild
             category = ctx.guild.get_channel(guild_data["category_channel"])
             if not category:
-                await ctx.response.send_message("Games category not set properly - please retry")
+                await ctx.response.send_message(
+                    "Games category not set properly - please retry", ephemeral=True
+                )
                 return
             assert isinstance(category, discord.CategoryChannel)
             manager = GameManager(game.value, category, ctx.user)
             manager.on_close = lambda: self.managers.discard(manager)
             self.managers.add(manager)
             await manager.send_embed(ctx)
+
+        @bot.slash_command(
+            name="set_games_category",
+            description="Set the category for games to be played in.",
+            guild_ids=[1327416677863784508],
+        )
+        @discord.option("category", discord.CategoryChannel)
+        async def set_category(
+            ctx: discord.ApplicationContext, category: discord.CategoryChannel
+        ):
+            with open("guild_data.json", "r") as f:
+                data: dict[str, dict] = json.load(f)
+            data.setdefault(str(ctx.guild_id), {})["category_channel"] = category.id
+            with open("guild_data.json", "w") as f:
+                json.dump(data, f, indent=4)
+            await ctx.response.send_message("Category channel set!", ephemeral=True)
 
         return bot

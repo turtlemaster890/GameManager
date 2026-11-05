@@ -23,7 +23,7 @@ class Role(Enum):
 
 class SecretHitlerGame(GameProtocol):
     name = "Secret Hitler"
-    minPlayers = 5
+    # minPlayers = 5
     maxPlayers = 10
 
     def setup(self) -> None:
