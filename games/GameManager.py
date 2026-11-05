@@ -68,7 +68,7 @@ class LobbyView(View):
             )
             return
         await interaction.response.defer(invisible=True)
-        await self.manager.start_game(interaction)
+        await self.manager.start_game(interaction, self.manager.cat)
 
     @button(label="Close", style=discord.ButtonStyle.gray)
     async def close_lobby(self, button: Button, interaction: Interaction):
@@ -82,7 +82,7 @@ class LobbyView(View):
 
 
 class GameManager:
-    def __init__(self, game: type[GameProtocol], host: discord.Member | None = None):
+    def __init__(self, game: type[GameProtocol], cat: discord.CategoryChannel, host: discord.Member | None = None):
         self.players: set[discord.Member] = set()
         self.lobby_message: discord.Message | discord.InteractionMessage | None = None
         self.voice_client: discord.VoiceClient | None = None
@@ -92,6 +92,9 @@ class GameManager:
         self.view: LobbyView | None = None
         self.host = host
         self.on_close: Callable[[], None] | None = None
+        self.cat = cat
+        self.cat_channel: discord.TextChannel | None = None
+        self.player_channels: dict[discord.Member, discord.TextChannel] = {}
         if host:
             self.add_player(host)
         self.game = game(self)
@@ -136,7 +139,7 @@ class GameManager:
             self.on_close()
             self.on_close = None
 
-    async def start_game(self, interaction: Interaction):
+    async def start_game(self, interaction: Interaction, cat: discord.CategoryChannel):
         if self.started:
             return
 
@@ -162,6 +165,25 @@ class GameManager:
                 )
                 return
             self.voice_client = await host_channel.connect(cls=discord.VoiceClient)
+
+        if self.game.playerChannels:
+            self.cat_channel = await cat.create_text_channel(f"**{self.game.name}**")
+            for player in self.players:
+                channel = await cat.create_text_channel(
+                    f"{player.display_name}'s channel"
+                )
+                overwrite = discord.PermissionOverwrite()
+                overwrite.view_channel = False
+                overwrite.send_messages = False
+                overwrite.read_messages = False
+                overwrite.read_message_history = False
+                await channel.set_permissions(channel.guild.default_role, overwrite=overwrite)
+                overwrite = discord.PermissionOverwrite()
+                overwrite.view_channel = True
+                overwrite.send_messages = True
+                overwrite.read_messages = True
+                overwrite.read_message_history = True
+                await channel.set_permissions(player, overwrite=overwrite)
 
         self.voice_channel = host_channel
         if interaction.channel:
@@ -206,3 +228,24 @@ class GameManager:
                 )
                 return
             self.lobby_message = await self.text_channel.send(content=content)
+
+    async def send_to_player(
+        self,
+        player: discord.Member,
+        content: str | None = None,
+        embed: discord.Embed | None = None,
+        view: discord.ui.View | None = None,
+    ):
+        if not self.game.playerChannels:
+            return
+        if player not in self.player_channels:
+            return
+        channel = self.player_channels[player]
+        if embed is not None and view is not None:
+            await channel.send(content=content, embed=embed, view=view)
+        elif embed is not None:
+            await channel.send(content=content, embed=embed)
+        elif view is not None:
+            await channel.send(content=content, view=view)
+        else:
+            await channel.send(content=content)

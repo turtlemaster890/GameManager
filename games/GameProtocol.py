@@ -11,6 +11,7 @@ class GameProtocol(Protocol):
     minPlayers: int | None = None
     maxPlayers: int | None = None
     needsVoice: bool = False
+    playerChannels: bool = True
     manager: GameManager
 
     def __init__(self, manager: GameManager) -> None:

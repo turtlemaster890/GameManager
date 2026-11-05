@@ -1,3 +1,5 @@
+import json
+
 import discord
 
 from games.GameManager import GameManager
@@ -23,7 +25,22 @@ class GameBot:
         async def make_room(ctx: discord.ApplicationContext, game: Games):
             if not isinstance(ctx.user, discord.Member):
                 return
-            manager = GameManager(game.value, ctx.user)
+            with open("guild_data.json", "r") as f:
+                data: dict[str, dict] = json.load(f)
+            if str(ctx.guild_id) not in data:
+                await ctx.response.send_message("Please set a category for games!")
+                return
+            guild_data = data[str(ctx.guild_id)]
+            if not guild_data["category_channel"]:
+                await ctx.response.send_message("Please set a category for games!")
+                return
+            assert ctx.guild
+            category = ctx.guild.get_channel(guild_data["category_channel"])
+            if not category:
+                await ctx.response.send_message("Games category not set properly - please retry")
+                return
+            assert isinstance(category, discord.CategoryChannel)
+            manager = GameManager(game.value, category, ctx.user)
             manager.on_close = lambda: self.managers.discard(manager)
             self.managers.add(manager)
             await manager.send_embed(ctx)
