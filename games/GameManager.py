@@ -232,29 +232,44 @@ class GameManager:
         embed: discord.Embed | None = None,
         view: discord.ui.View | None = None,
     ):
-        if self.lobby_message:
-            try:
-                await self.lobby_message.edit(content=content, embed=embed, view=view)
-                return
-            except discord.NotFound:
-                self.lobby_message = None
-        if self.text_channel:
+        # if self.lobby_message:
+        #     try:
+        #         await self.lobby_message.edit(content=content, embed=embed, view=view)
+        #         return
+        #     except discord.NotFound:
+        #         self.lobby_message = None
+        # if self.text_channel:
+        #     if embed is not None and view is not None:
+        #         self.lobby_message = await self.text_channel.send(
+        #             content=content, embed=embed, view=view, silent=True
+        #         )
+        #         return
+        #     if embed is not None:
+        #         self.lobby_message = await self.text_channel.send(
+        #             content=content, embed=embed, silent=True
+        #         )
+        #         return
+        #     if view is not None:
+        #         self.lobby_message = await self.text_channel.send(
+        #             content=content, view=view, silent=True
+        #         )
+        #         return
+        #     self.lobby_message = await self.text_channel.send(
+        #         content=content, silent=True
+        #     )
+        if self.cat_channel:
             if embed is not None and view is not None:
-                self.lobby_message = await self.text_channel.send(
-                    content=content, embed=embed, view=view
+                await self.cat_channel.send(
+                    content=content, embed=embed, view=view, silent=True
                 )
                 return
             if embed is not None:
-                self.lobby_message = await self.text_channel.send(
-                    content=content, embed=embed
-                )
+                await self.cat_channel.send(content=content, embed=embed, silent=True)
                 return
             if view is not None:
-                self.lobby_message = await self.text_channel.send(
-                    content=content, view=view
-                )
+                await self.cat_channel.send(content=content, view=view, silent=True)
                 return
-            self.lobby_message = await self.text_channel.send(content=content)
+            await self.cat_channel.send(content=content, silent=True)
 
     async def send_to_player(
         self,
@@ -269,13 +284,13 @@ class GameManager:
             return
         channel = self.player_channels[player]
         if embed is not None and view is not None:
-            await channel.send(content=content, embed=embed, view=view)
+            await channel.send(content=content, embed=embed, view=view, silent=True)
         elif embed is not None:
-            await channel.send(content=content, embed=embed)
+            await channel.send(content=content, embed=embed, silent=True)
         elif view is not None:
-            await channel.send(content=content, view=view)
+            await channel.send(content=content, view=view, silent=True)
         else:
-            await channel.send(content=content)
+            await channel.send(content=content, silent=True)
 
 
 class EndGameView(View):
@@ -290,6 +305,11 @@ class EndGameView(View):
         custom_id="manager:end_game",
     )
     async def end_game(self, button: Button, interaction: Interaction):
+        if interaction.user != self.host:
+            await interaction.response.send_message(
+                "You didn't make this game room!", ephemeral=True
+            )
+            return
         await interaction.response.defer()
         with open("./guild_data.json", "r") as f:
             data: dict[str, dict] = json.load(f)

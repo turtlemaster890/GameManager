@@ -46,9 +46,18 @@ class SecretHitlerGame(GameProtocol):
         for player in self.order:
             self.roles[player] = pool.pop()
 
+        while True:
+            await self.get_new_government()
+            break
+
     async def get_new_government(self):
         self.president_index += 1
-        await self.manager.send()
+        await self.manager.send_to_player(
+            self.order[self.president_index],
+            self.order[self.president_index].mention,
+            embed=discord.Embed(title="Select the next chancellor!"),
+            view=PickChancellorView(self, self.order[self.president_index]),
+        )
 
     def make_vote_embed(
         self, government: tuple[discord.Member, discord.Member]
@@ -61,9 +70,13 @@ class SecretHitlerGame(GameProtocol):
     async def get_votes(
         self, government: tuple[discord.Member, discord.Member]
     ) -> bool:
-        await self.manager.send(
-            embed=self.make_vote_embed(government), view=StartVoteView(self, government)
-        )
+        for p in self.order:
+            await self.manager.send_to_player(
+                p,
+                p.mention,
+                embed=self.make_vote_embed(government),
+                view=ElectionView(self, p),
+            )
         self.votes = {}
         start_time = time.time()
         while len(self.votes) < len(self.order) and time.time() - start_time < 30:
@@ -80,33 +93,61 @@ class SecretHitlerGame(GameProtocol):
             await self.manager.send(embed=e)
             return False
 
-    async def send_vote_menu(
-        self,
-        interaction: discord.Interaction,
-        government: tuple[discord.Member, discord.Member],
-    ):
-        await interaction.followup.send(embed=self.make_vote_embed(government), view=ElectionView(self, interaction.user))  # type: ignore
+    # async def send_vote_menu(
+    #     self,
+    #     interaction: discord.Interaction,
+    #     government: tuple[discord.Member, discord.Member],
+    # ):
+    #     await interaction.followup.send(embed=self.make_vote_embed(government), view=ElectionView(self, interaction.user))  # type: ignore
 
     def vote(self, player: discord.Member, ja: bool) -> None:
         self.votes[player] = ja
 
+    async def pick_chancellor(
+        self, president: discord.Member, selected_chancellor: discord.Member
+    ):
+        ja = await self.get_votes((president, selected_chancellor))
+        if ja:
+            print("Chancellor picked!")
+
 
 class PickChancellorView(View):
-    def __init__(self, game: SecretHitlerGame, player: discord.Member): ...
-
-
-class StartVoteView(View):
-    def __init__(
-        self, game: SecretHitlerGame, government: tuple[discord.Member, discord.Member]
-    ):
+    def __init__(self, game: SecretHitlerGame, player: discord.Member):
         super().__init__(timeout=None)
         self.game = game
-        self.government = government
+        self.player = player
+        opts: list[discord.SelectOption] = []
+        for pl in game.order:
+            if game.previous_government and pl in game.previous_government:
+                continue
+            if player == pl:
+                continue
+            opts.append(discord.SelectOption(label=pl.display_name, value=str(pl.id)))
+        sel = discord.ui.Select(options=opts, placeholder="Next Chancellor")
+        sel.callback = self.sel_callback
+        self.add_item(sel)
 
-    @button(label="Vote", style=discord.ButtonStyle.blurple)
-    async def vote(self, button: Button, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        await self.game.send_vote_menu(interaction, self.government)
+    async def sel_callback(self, interaction: discord.Interaction):
+        selection_id: str = interaction.data["values"][0]  # type: ignore
+        assert interaction.guild
+        selected_player = interaction.guild.get_member(int(selection_id))
+        assert selected_player
+        await interaction.response.defer()
+        await self.game.pick_chancellor(self.player, selected_player)
+
+
+# class StartVoteView(View):
+#     def __init__(
+#         self, game: SecretHitlerGame, government: tuple[discord.Member, discord.Member]
+#     ):
+#         super().__init__(timeout=None)
+#         self.game = game
+#         self.government = government
+
+#     @button(label="Vote", style=discord.ButtonStyle.blurple)
+#     async def vote(self, button: Button, interaction: discord.Interaction):
+#         await interaction.response.defer(ephemeral=True)
+#         await self.game.send_vote_menu(interaction, self.government)
 
 
 class ElectionView(View):
@@ -117,12 +158,20 @@ class ElectionView(View):
 
     @button(label="Ja", style=discord.ButtonStyle.green)
     async def voteJa(self, button: Button, interaction: discord.Interaction):
+        if interaction.user != self.player:
+            await interaction.response.defer(invisible=True)
+            return
         self.game.vote(self.player, True)
         self.disable_all_items()
-        await interaction.response.defer(invisible=True)
+        await interaction.response.edit_message(view=self)
+        # await interaction.response.defer()
 
     @button(label="Nein", style=discord.ButtonStyle.red)
     async def voteNein(self, button: Button, interaction: discord.Interaction):
+        if interaction.user != self.player:
+            await interaction.response.defer(invisible=True)
+            return
         self.game.vote(self.player, False)
         self.disable_all_items()
-        await interaction.response.defer(invisible=True)
+        await interaction.response.edit_message(view=self)
+        # await interaction.response.defer()
