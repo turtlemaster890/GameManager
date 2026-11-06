@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 import discord
-from discord.ui import Button, Select, View, button
+from discord.ui import Button, Select, View
 
 from .GameProtocol import GameProtocol
 
@@ -120,7 +120,7 @@ class UnoGame(GameProtocol):
         self.discard = [top]
         self.colour = top.colour
         self.last_action = "Game Started!"
-        self.table_view = TableView(self)
+        # self.table_view = TableView(self)
         await self.refresh()
 
     def embed(self) -> discord.Embed:
@@ -143,8 +143,18 @@ class UnoGame(GameProtocol):
         return e
 
     async def refresh(self):
+        for player in self.order:
+            view = None
+            if player == self.current:
+                view = HandView(self, player)
+            await self.manager.send_to_player(
+                player, f"{self.current.mention}'s turn", embed=self.embed(), view=view
+            )
+        # await self.manager.send(
+        #     f"{self.current.mention}'s turn", embed=self.embed(), view=self.table_view
+        # )
         await self.manager.send(
-            f"{self.current.mention}'s turn", embed=self.embed(), view=self.table_view
+            f"{self.current.mention}'s turn", embed=self.embed(), send_to_players=False
         )
 
     async def play(
@@ -228,25 +238,25 @@ async def do_play(
     await interaction.edit_original_response(
         content=err or f"You played {label(card)}.", view=None
     )
-    await interaction.delete_original_response(delay=5)
+    # await interaction.delete_original_response(delay=5)
 
 
-class TableView(View):
-    def __init__(self, game: UnoGame):
-        super().__init__(timeout=None)
-        self.game = game
+# class TableView(View):
+#     def __init__(self, game: UnoGame):
+#         super().__init__(timeout=None)
+#         self.game = game
 
-    @button(label="My Hand", style=discord.ButtonStyle.blurple)
-    async def show_hand(self, button: Button, interaction: discord.Interaction):
-        if interaction.user not in self.game.hands:
-            await interaction.response.send_message(
-                "You're not in this game.", ephemeral=True
-            )
-            return
-        content, view = self.game.hand_message(interaction.user)  # type: ignore
-        await interaction.response.send_message(
-            content=content, view=view, ephemeral=True
-        )
+#     @button(label="My Hand", style=discord.ButtonStyle.blurple)
+#     async def show_hand(self, button: Button, interaction: discord.Interaction):
+#         if interaction.user not in self.game.hands:
+#             await interaction.response.send_message(
+#                 "You're not in this game.", ephemeral=True
+#             )
+#             return
+#         content, view = self.game.hand_message(interaction.user)  # type: ignore
+#         await interaction.response.send_message(
+#             content=content, view=view, ephemeral=True
+#         )
 
 
 class HandView(View):
