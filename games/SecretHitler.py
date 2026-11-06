@@ -50,6 +50,7 @@ class SecretHitlerGame(GameProtocol):
 
     def setup(self) -> None:
         self.roles: dict[discord.Member, Role] = {}
+        self.hitler: discord.Member | None = None
         self.order: list[discord.Member] = []
         self.previous_government: tuple[
             discord.Member | None, discord.Member | None
@@ -75,10 +76,27 @@ class SecretHitlerGame(GameProtocol):
         random.shuffle(pool)
         for player in self.order:
             self.roles[player] = pool.pop()
+            if self.roles[player] == Role.HITLER:
+                self.hitler = player
             e = discord.Embed(title="Role", description=self.roles[player].value)
             message = await self.manager.send_to_player(player, embed=e)
             if message:
                 await message.pin()
+
+        for player in self.order:
+            if self.roles[player] == Role.FASCIST:
+                fascistEmbed = discord.Embed(title="Your team")
+                if self.hitler:
+                    fascistEmbed.add_field(name="Hitler", value=self.hitler.mention)
+                fascistEmbed.add_field(
+                    name="Your fellow fascists",
+                    value=", ".join(
+                        m.mention
+                        for m, r in self.roles.items()
+                        if r == Role.FASCIST and m != player
+                    ),
+                )
+                await self.manager.send_to_player(player, embed=fascistEmbed)
 
         while True:
             await self.get_new_government()
@@ -209,6 +227,28 @@ class SecretHitlerGame(GameProtocol):
             self.president = president
             self.chancellor = selected_chancellor
             print("Chancellor picked!")
+            if self.roles[selected_chancellor] == Role.HITLER:
+                fascistEmbed = discord.Embed(
+                    title="Victory!",
+                    description="Hitler was elected chancellor. You Win!",
+                    colour=discord.Colour.red(),
+                )
+                liberalEmbed = discord.Embed(
+                    title="Loss...",
+                    description="Hitler was elected chancellor. You lose.",
+                    colour=discord.Colour.red(),
+                )
+                neutralEmbed = discord.Embed(
+                    title="Fascists win!",
+                    description="Hitler was elected chancellor. Fascists win.",
+                    colour=discord.Colour.red(),
+                )
+                await self.manager.send(embed=neutralEmbed, send_to_players=False)
+                for p, r in self.roles.items():
+                    if Role.is_fascist(r):
+                        await self.manager.send_to_player(p, embed=fascistEmbed)
+                    else:
+                        await self.manager.send_to_player(p, embed=liberalEmbed)
 
         else:
             await self.get_new_government()
