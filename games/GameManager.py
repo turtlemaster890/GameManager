@@ -183,7 +183,8 @@ class GameManager:
             f"-- 🎮 **{self.game.name}** 🎮 --"
         )
         assert self.host
-        await self.cat_channel.send(view=EndGameView(self.host))
+        message = await self.cat_channel.send(view=EndGameView(self.host))
+        await message.pin()
         if self.game.playerChannels:
             for player in self.players:
                 channel = await cat.create_text_channel(

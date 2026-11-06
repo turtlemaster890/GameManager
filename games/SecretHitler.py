@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import math
 import random
 import time
@@ -99,7 +100,7 @@ class SecretHitlerGame(GameProtocol):
         await self.manager.send_to_player(
             self.president,
             embed=e,
-            view=SelectPolicyView(
+            view=DiscardPolicyView(
                 self, self.president, policies, callback=self.select_policies_chancellor
             ),
         )
@@ -114,7 +115,7 @@ class SecretHitlerGame(GameProtocol):
         await self.manager.send_to_player(
             self.chancellor,
             embed=e,
-            view=SelectPolicyView(
+            view=DiscardPolicyView(
                 self, self.chancellor, available, callback=self.enact_policy
             ),
         )
@@ -122,7 +123,6 @@ class SecretHitlerGame(GameProtocol):
     async def enact_policy(self, policy: list[Policy]):
         assert len(policy) == 1
         enacted = policy[0]
-        self.policy_enacted = True
         if enacted == Policy.LIBERAL:
             self.liberal_policies += 1
         else:
@@ -130,6 +130,7 @@ class SecretHitlerGame(GameProtocol):
         e = discord.Embed(title="Enacted Policy", colour=enacted.value[2])
         e.add_field(name="Policy Type", value=enacted.value[0])
         await self.manager.send(embed=e)
+        self.policy_enacted = True
 
     async def get_new_government(self):
         self.president_index += 1
@@ -145,9 +146,12 @@ class SecretHitlerGame(GameProtocol):
         )
 
     def make_vote_embed(
-        self, government: tuple[discord.Member, discord.Member]
+        self,
+        government: tuple[discord.Member, discord.Member],
+        end_time: datetime.datetime,
     ) -> discord.Embed:
         e = discord.Embed(title="Government Vote")
+        e.add_field(name="Vote ends", value=discord.utils.format_dt(end_time, "R"))
         e.add_field(name="President", value=government[0].display_name)
         e.add_field(name="Chancellor", value=government[1].display_name)
         return e
@@ -155,16 +159,20 @@ class SecretHitlerGame(GameProtocol):
     async def get_votes(
         self, government: tuple[discord.Member, discord.Member]
     ) -> bool:
+        start_time = datetime.datetime.now()
+        end_time = start_time + datetime.timedelta(seconds=30)
         for p in self.order:
             await self.manager.send_to_player(
                 p,
                 p.mention,
-                embed=self.make_vote_embed(government),
+                embed=self.make_vote_embed(government, end_time),
                 view=ElectionView(self, p),
             )
         self.votes = {}
-        start_time = time.time()
-        while len(self.votes) < len(self.order) and time.time() - start_time < 30:
+        while (
+            len(self.votes) < len(self.order)
+            and time.time() - start_time.timestamp() < 30
+        ):
             await asyncio.sleep(0.1)
         jas = sum([1 for v in self.votes.values() if v])
         if jas > len(self.order) / 2:
@@ -186,13 +194,6 @@ class SecretHitlerGame(GameProtocol):
             await self.manager.send(embed=e)
             return False
 
-    # async def send_vote_menu(
-    #     self,
-    #     interaction: discord.Interaction,
-    #     government: tuple[discord.Member, discord.Member],
-    # ):
-    #     await interaction.followup.send(embed=self.make_vote_embed(government), view=ElectionView(self, interaction.user))  # type: ignore
-
     def vote(self, player: discord.Member, ja: bool) -> None:
         self.votes[player] = ja
 
@@ -209,7 +210,7 @@ class SecretHitlerGame(GameProtocol):
             await self.get_new_government()
 
 
-class SelectPolicyView(View):
+class DiscardPolicyView(View):
     def __init__(
         self,
         game: SecretHitlerGame,
@@ -224,7 +225,7 @@ class SelectPolicyView(View):
         self.callback = callback
 
         for policy in self.policies:
-            b = Button(label=policy.value[0], style=policy.value[1])
+            b = Button(label=policy.value[0], emoji="🗑️", style=policy.value[1])
             b.callback = self._cb(policy)
             self.add_item(b)
 
@@ -246,7 +247,11 @@ class PickChancellorView(View):
         self.player = player
         opts: list[discord.SelectOption] = []
         for pl in game.order:
-            if game.previous_government and pl in game.previous_government:
+            if (
+                game.previous_government
+                and pl in game.previous_government
+                and len(game.manager.players) > 5
+            ):
                 continue
             if player == pl:
                 continue
