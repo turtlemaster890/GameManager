@@ -16,9 +16,9 @@ from .GameProtocol import GameProtocol
 
 
 class Role(Enum):
-    LIBERAL = 1
-    FASCIST = 2
-    HITLER = 3
+    LIBERAL = "Liberal"
+    FASCIST = "Fascist"
+    HITLER = "Hitler"
 
     def is_fascist(self):
         return self in [self.FASCIST, self.HITLER]
@@ -67,7 +67,7 @@ class SecretHitlerGame(GameProtocol):
     async def run(self) -> None:
         self.order = list(self.manager.players)
         players = len(self.order)
-        fascists = math.ceil(players / 2) - 1
+        fascists = math.ceil(players / 2)
         liberals = players - fascists
         pool = (
             [Role.HITLER] + [Role.FASCIST] * (fascists - 1) + [Role.LIBERAL] * liberals
@@ -75,6 +75,10 @@ class SecretHitlerGame(GameProtocol):
         random.shuffle(pool)
         for player in self.order:
             self.roles[player] = pool.pop()
+            e = discord.Embed(title="Role", description=self.roles[player].value)
+            message = await self.manager.send_to_player(player, embed=e)
+            if message:
+                await message.pin()
 
         while True:
             await self.get_new_government()

@@ -246,13 +246,13 @@ class GameManager:
         content: str | None = None,
         embed: discord.Embed | None = None,
         view: discord.ui.View | None = None,
-    ):
+    ) -> discord.Message | None:
         if not self.game.playerChannels:
             return
         if player not in self.player_channels:
             return
         channel = self.player_channels[player]
-        await self.send_to_channel(channel, content, embed, view)
+        return await self.send_to_channel(channel, content, embed, view)
 
     async def send_to_channel(
         self,
@@ -260,15 +260,15 @@ class GameManager:
         content: str | None = None,
         embed: discord.Embed | None = None,
         view: discord.ui.View | None = None,
-    ):
+    ) -> discord.Message:
         if embed is not None and view is not None:
-            await channel.send(content=content, embed=embed, view=view, silent=True)
+            return await channel.send(content=content, embed=embed, view=view, silent=True)
         elif embed is not None:
-            await channel.send(content=content, embed=embed, silent=True)
+            return await channel.send(content=content, embed=embed, silent=True)
         elif view is not None:
-            await channel.send(content=content, view=view, silent=True)
+            return await channel.send(content=content, view=view, silent=True)
         else:
-            await channel.send(content=content, silent=True)
+            return await channel.send(content=content, silent=True)
 
 
 class EndGameView(View):
