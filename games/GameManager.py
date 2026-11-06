@@ -179,12 +179,12 @@ class GameManager:
                 return
             self.voice_client = await host_channel.connect(cls=discord.VoiceClient)
 
+        self.cat_channel = await cat.create_text_channel(
+            f"-- 🎮 **{self.game.name}** 🎮 --"
+        )
+        assert self.host
+        await self.cat_channel.send(view=EndGameView(self.host))
         if self.game.playerChannels:
-            self.cat_channel = await cat.create_text_channel(
-                f"-- 🎮 **{self.game.name}** 🎮 --"
-            )
-            assert self.host
-            await self.cat_channel.send(view=EndGameView(self.host))
             for player in self.players:
                 channel = await cat.create_text_channel(
                     f"{player.display_name}'s channel"
@@ -204,13 +204,13 @@ class GameManager:
                 overwrite.read_message_history = True
                 await channel.set_permissions(player, overwrite=overwrite)
                 self.player_channels[player] = channel
-            with open("./guild_data.json", "r") as f:
-                data: dict[str, dict] = json.load(f)
-            data[str(self.cat.guild.id)].setdefault("game_channels", {})[
-                str(self.cat_channel.id)
-            ] = [c.id for c in self.player_channels.values()]
-            with open("./guild_data.json", "w") as f:
-                json.dump(data, f, indent=4)
+        with open("./guild_data.json", "r") as f:
+            data: dict[str, dict] = json.load(f)
+        data[str(self.cat.guild.id)].setdefault("game_channels", {})[
+            str(self.cat_channel.id)
+        ] = [c.id for c in self.player_channels.values()]
+        with open("./guild_data.json", "w") as f:
+            json.dump(data, f, indent=4)
 
         self.voice_channel = host_channel
         if interaction.channel:
@@ -231,45 +231,13 @@ class GameManager:
         content: str | None = None,
         embed: discord.Embed | None = None,
         view: discord.ui.View | None = None,
+        send_to_players: bool = True,
     ):
-        # if self.lobby_message:
-        #     try:
-        #         await self.lobby_message.edit(content=content, embed=embed, view=view)
-        #         return
-        #     except discord.NotFound:
-        #         self.lobby_message = None
-        # if self.text_channel:
-        #     if embed is not None and view is not None:
-        #         self.lobby_message = await self.text_channel.send(
-        #             content=content, embed=embed, view=view, silent=True
-        #         )
-        #         return
-        #     if embed is not None:
-        #         self.lobby_message = await self.text_channel.send(
-        #             content=content, embed=embed, silent=True
-        #         )
-        #         return
-        #     if view is not None:
-        #         self.lobby_message = await self.text_channel.send(
-        #             content=content, view=view, silent=True
-        #         )
-        #         return
-        #     self.lobby_message = await self.text_channel.send(
-        #         content=content, silent=True
-        #     )
         if self.cat_channel:
-            if embed is not None and view is not None:
-                await self.cat_channel.send(
-                    content=content, embed=embed, view=view, silent=True
-                )
-                return
-            if embed is not None:
-                await self.cat_channel.send(content=content, embed=embed, silent=True)
-                return
-            if view is not None:
-                await self.cat_channel.send(content=content, view=view, silent=True)
-                return
-            await self.cat_channel.send(content=content, silent=True)
+            await self.send_to_channel(self.cat_channel, content, embed, view)
+        if send_to_players:
+            for c in self.player_channels.values():
+                await self.send_to_channel(c, content, embed, view)
 
     async def send_to_player(
         self,
@@ -283,6 +251,15 @@ class GameManager:
         if player not in self.player_channels:
             return
         channel = self.player_channels[player]
+        await self.send_to_channel(channel, content, embed, view)
+
+    async def send_to_channel(
+        self,
+        channel: discord.TextChannel,
+        content: str | None = None,
+        embed: discord.Embed | None = None,
+        view: discord.ui.View | None = None,
+    ):
         if embed is not None and view is not None:
             await channel.send(content=content, embed=embed, view=view, silent=True)
         elif embed is not None:

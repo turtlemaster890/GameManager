@@ -4,7 +4,9 @@ import asyncio
 import math
 import random
 import time
+from collections.abc import Callable
 from enum import Enum
+from types import CoroutineType
 
 import discord
 from discord.ui import Button, View, button
@@ -21,18 +23,45 @@ class Role(Enum):
         return self in [self.FASCIST, self.HITLER]
 
 
+class Policy(Enum):
+    LIBERAL = ("Liberal Policy", discord.ButtonStyle.blurple, discord.Colour.blue())
+    FASCIST = ("Fascist Policy", discord.ButtonStyle.red, discord.Colour.red())
+
+
+def make_deck() -> list[Policy]:
+    deck = [Policy.FASCIST] * 11 + [Policy.LIBERAL] * 6
+    random.shuffle(deck)
+    return deck
+
+
+def draw(n: int, deck: list[Policy]) -> list[Policy]:
+    drawn: list[Policy] = []
+    for _ in range(n):
+        drawn.append(deck.pop())
+    return drawn
+
+
 class SecretHitlerGame(GameProtocol):
     name = "Secret Hitler"
     # minPlayers = 5
     maxPlayers = 10
+    # needsVoice = True
 
     def setup(self) -> None:
         self.roles: dict[discord.Member, Role] = {}
         self.order: list[discord.Member] = []
-        self.previous_government: tuple[discord.Member, discord.Member] | None = None
+        self.previous_government: tuple[
+            discord.Member | None, discord.Member | None
+        ] = (None, None)
         self.president_index: int = 0
+        self.president: discord.Member | None = None
         self.chancellor: discord.Member | None = None
         self.votes: dict[discord.Member, bool] = {}
+        self.policy_deck: list[Policy] = make_deck()
+        self.policy_discard: list[Policy] = []
+        self.liberal_policies: int = 0
+        self.fascist_policies: int = 0
+        self.policy_enacted: bool = False
 
     async def run(self) -> None:
         self.order = list(self.manager.players)
@@ -48,10 +77,66 @@ class SecretHitlerGame(GameProtocol):
 
         while True:
             await self.get_new_government()
-            break
+            while self.chancellor is None:
+                await asyncio.sleep(1)
+            assert self.president
+            assert self.chancellor
+            self.policy_enacted = False
+            await self.select_policies_president()
+            while not self.policy_enacted:
+                await asyncio.sleep(1)
+
+    async def select_policies_president(self) -> None:
+        policies = draw(3, self.policy_deck)
+        self.policy_discard += policies
+        e = discord.Embed(title="Discard a policy")
+        e.add_field(
+            name="Drawn Policies",
+            value=", ".join(policy.value[0] for policy in policies),
+        )
+        assert self.president
+        assert self.chancellor
+        await self.manager.send_to_player(
+            self.president,
+            embed=e,
+            view=SelectPolicyView(
+                self, self.president, policies, callback=self.select_policies_chancellor
+            ),
+        )
+
+    async def select_policies_chancellor(self, available: list[Policy]):
+        e = discord.Embed(title="Discard a policy")
+        e.add_field(
+            name="Passed Policies",
+            value=", ".join(policy.value[0] for policy in available),
+        )
+        assert self.chancellor
+        await self.manager.send_to_player(
+            self.chancellor,
+            embed=e,
+            view=SelectPolicyView(
+                self, self.chancellor, available, callback=self.enact_policy
+            ),
+        )
+
+    async def enact_policy(self, policy: list[Policy]):
+        assert len(policy) == 1
+        enacted = policy[0]
+        self.policy_enacted = True
+        if enacted == Policy.LIBERAL:
+            self.liberal_policies += 1
+        else:
+            self.fascist_policies += 1
+        e = discord.Embed(title="Enacted Policy", colour=enacted.value[2])
+        e.add_field(name="Policy Type", value=enacted.value[0])
+        await self.manager.send(embed=e)
 
     async def get_new_government(self):
         self.president_index += 1
+        self.president_index %= len(self.order)
+        self.previous_government = (self.president, self.chancellor)
+        self.president = None
+        self.chancellor = None
         await self.manager.send_to_player(
             self.order[self.president_index],
             self.order[self.president_index].mention,
@@ -83,13 +168,21 @@ class SecretHitlerGame(GameProtocol):
             await asyncio.sleep(0.1)
         jas = sum([1 for v in self.votes.values() if v])
         if jas > len(self.order) / 2:
-            e = discord.Embed(title="Results", description="The vote passes!")
+            e = discord.Embed(
+                title="Results",
+                description="The vote passes!",
+                colour=discord.Colour.green(),
+            )
             e.add_field(name="President", value=government[0].display_name)
             e.add_field(name="Chancellor", value=government[1].display_name)
             await self.manager.send(embed=e)
             return True
         else:
-            e = discord.Embed(title="Results", description="The vote fails.")
+            e = discord.Embed(
+                title="Results",
+                description="The vote fails.",
+                colour=discord.Colour.red(),
+            )
             await self.manager.send(embed=e)
             return False
 
@@ -108,7 +201,42 @@ class SecretHitlerGame(GameProtocol):
     ):
         ja = await self.get_votes((president, selected_chancellor))
         if ja:
+            self.president = president
+            self.chancellor = selected_chancellor
             print("Chancellor picked!")
+
+        else:
+            await self.get_new_government()
+
+
+class SelectPolicyView(View):
+    def __init__(
+        self,
+        game: SecretHitlerGame,
+        player: discord.Member,
+        available_policies: list[Policy],
+        callback: Callable[[list[Policy]], CoroutineType],
+    ):
+        super().__init__(timeout=None)
+        self.game = game
+        self.player = player
+        self.policies = list(available_policies)
+        self.callback = callback
+
+        for policy in self.policies:
+            b = Button(label=policy.value[0], style=policy.value[1])
+            b.callback = self._cb(policy)
+            self.add_item(b)
+
+    def _cb(self, policy: Policy):
+        async def interior(interaction: discord.Interaction):
+            self.disable_all_items()
+            await interaction.response.edit_message(view=self)
+            policies = self.policies
+            policies.remove(policy)
+            await self.callback(policies)
+
+        return interior
 
 
 class PickChancellorView(View):
@@ -132,7 +260,8 @@ class PickChancellorView(View):
         assert interaction.guild
         selected_player = interaction.guild.get_member(int(selection_id))
         assert selected_player
-        await interaction.response.defer()
+        self.disable_all_items()
+        await interaction.response.edit_message(view=self)
         await self.game.pick_chancellor(self.player, selected_player)
 
 
