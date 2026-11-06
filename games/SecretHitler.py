@@ -14,6 +14,8 @@ from discord.ui import Button, View, button
 
 from .GameProtocol import GameProtocol
 
+# TODO - Make embeds nicer
+
 
 class Role(Enum):
     LIBERAL = "Liberal"
@@ -108,6 +110,18 @@ class SecretHitlerGame(GameProtocol):
             await self.select_policies_president()
             while not self.policy_enacted:
                 await asyncio.sleep(1)
+            await self.manager.send(embed=self.make_policy_board_embed())
+            # TODO - Continue game implementation
+
+    def make_policy_board_embed(self) -> discord.Embed:
+        e = discord.Embed(title="Board")
+        e.add_field(
+            name="Liberal Policies", value="🟦 " * self.liberal_policies, inline=False
+        )
+        e.add_field(
+            name="Fascist Policies", value="🟥 " * self.fascist_policies, inline=False
+        )
+        return e
 
     async def select_policies_president(self) -> None:
         policies = draw(3, self.policy_deck)
