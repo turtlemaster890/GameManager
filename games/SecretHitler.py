@@ -166,6 +166,29 @@ class SecretHitlerGame(GameProtocol):
         e = discord.Embed(title="Enacted Policy", colour=enacted.value[2])
         e.add_field(name="Policy Type", value=enacted.value[0])
         await self.manager.send(embed=e)
+        if self.liberal_policies >= 5:
+            liberalEmbed = discord.Embed(
+                title="Victory!",
+                description="You enacted 5 liberal policies. You Win!",
+                colour=discord.Colour.blue(),
+            )
+            fascistEmbed = discord.Embed(
+                title="Loss...",
+                description="5 liberal policies were enacted. You lose.",
+                colour=discord.Colour.blue(),
+            )
+            neutralEmbed = discord.Embed(
+                title="Liberals win!",
+                description="5 liberal policies were enacted. Liberals win.",
+                colour=discord.Colour.blue(),
+            )
+            await self.manager.send(embed=neutralEmbed, send_to_players=False)
+            for p, r in self.roles.items():
+                if r.is_fascist():
+                    await self.manager.send_to_player(p, embed=fascistEmbed)
+                else:
+                    await self.manager.send_to_player(p, embed=liberalEmbed)
+
         self.policy_enacted = True
 
     async def get_new_government(self):
@@ -259,7 +282,7 @@ class SecretHitlerGame(GameProtocol):
                 )
                 await self.manager.send(embed=neutralEmbed, send_to_players=False)
                 for p, r in self.roles.items():
-                    if Role.is_fascist(r):
+                    if r.is_fascist():
                         await self.manager.send_to_player(p, embed=fascistEmbed)
                     else:
                         await self.manager.send_to_player(p, embed=liberalEmbed)
