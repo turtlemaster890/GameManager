@@ -71,7 +71,7 @@ class Power(Enum):
 
 class SecretHitlerGame(GameProtocol):
     name = "Secret Hitler"
-    # minPlayers = 5
+    minPlayers = 5
     maxPlayers = 10
     # needsVoice = True
 
