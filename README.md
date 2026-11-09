@@ -47,7 +47,7 @@ python main.py
 ```
 2. Configure category channel
 ```bash
-/set_games-category category:<CategoryChannel>
+/set_games_category category:<CategoryChannel>
 ```
 3. Start a Game
 ```bash
