@@ -38,7 +38,7 @@ Create a `.env` file in the root directory with
 TOKEN=your_bot_token
 ```
 
-Or just join my testing server [here](https://discord.gg/evJFQPZsFx)!
+Or install my instance of the bot hosted with [nest](https://hackclub.app) [here](https://discord.com/oauth2/authorize?client_id=1566834081876934838), or join my testing server [here](https://discord.gg/evJFQPZsFx)!
 
 ## Usage
 1. Run Bot
