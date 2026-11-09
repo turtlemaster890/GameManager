@@ -27,8 +27,11 @@ class GameBot:
         async def make_room(ctx: discord.ApplicationContext, game: Games):
             if not isinstance(ctx.user, discord.Member):
                 return
-            with open("guild_data.json", "r") as f:
-                data: dict[str, dict] = json.load(f)
+            try:
+                with open("guild_data.json", "r") as f:
+                    data: dict[str, dict] = json.load(f)
+            except OSError:
+                data = {}
             if str(ctx.guild_id) not in data:
                 await ctx.response.send_message(
                     "Please set a category for games!", ephemeral=True
@@ -62,8 +65,11 @@ class GameBot:
         async def set_category(
             ctx: discord.ApplicationContext, category: discord.CategoryChannel
         ):
-            with open("guild_data.json", "r") as f:
-                data: dict[str, dict] = json.load(f)
+            try:
+                with open("guild_data.json", "r") as f:
+                    data: dict[str, dict] = json.load(f)
+            except OSError:
+                data = {}
             data.setdefault(str(ctx.guild_id), {})["category_channel"] = category.id
             with open("guild_data.json", "w") as f:
                 json.dump(data, f, indent=4)
