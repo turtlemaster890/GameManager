@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import datetime
-import math
 import random
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from enum import Enum
-from types import CoroutineType
 
 import discord
 from discord.ui import Button, View, button
@@ -18,17 +16,37 @@ from .GameProtocol import GameProtocol
 
 
 class Role(Enum):
-    LIBERAL = "Liberal"
-    FASCIST = "Fascist"
-    HITLER = "Hitler"
+    LIBERAL = ("Liberal", discord.Colour.blue())
+    FASCIST = ("Fascist", discord.Colour.red())
+    HITLER = ("Hitler", discord.Colour.red())
 
     def is_fascist(self):
-        return self in [self.FASCIST, self.HITLER]
+        return self in [Role.FASCIST, Role.HITLER]
+
+    @property
+    def label(self) -> str:
+        return self.value[0]
+
+    @property
+    def colour(self) -> discord.Colour:
+        return self.value[1]
 
 
 class Policy(Enum):
     LIBERAL = ("Liberal Policy", discord.ButtonStyle.blurple, discord.Colour.blue())
     FASCIST = ("Fascist Policy", discord.ButtonStyle.red, discord.Colour.red())
+
+    @property
+    def label(self) -> str:
+        return self.value[0]
+
+    @property
+    def style(self) -> discord.ButtonStyle:
+        return self.value[1]
+
+    @property
+    def colour(self) -> discord.Colour:
+        return self.value[2]
 
 
 def make_deck() -> list[Policy]:
@@ -44,20 +62,60 @@ def draw(n: int, deck: list[Policy]) -> list[Policy]:
     return drawn
 
 
+class Power(Enum):
+    PEEK = "peek"
+    EXECUTE = "execute"
+    INVESTIGATE = "investigate"
+    SPECIAL = "special"
+
+
 class SecretHitlerGame(GameProtocol):
     name = "Secret Hitler"
     # minPlayers = 5
     maxPlayers = 10
     # needsVoice = True
 
+    POWERS = {
+        range(7): {3: Power.PEEK, 4: Power.EXECUTE, 5: Power.EXECUTE},
+        range(7, 9): {
+            2: Power.INVESTIGATE,
+            3: Power.SPECIAL,
+            4: Power.EXECUTE,
+            5: Power.EXECUTE,
+        },
+        range(9, 11): {
+            1: Power.INVESTIGATE,
+            2: Power.INVESTIGATE,
+            3: Power.SPECIAL,
+            4: Power.EXECUTE,
+        },
+    }
+
+    def get_power(self) -> Power | None:
+        n = len(self.order)
+        powers = {}
+        for key in self.POWERS:
+            if n in key:
+                powers = self.POWERS[key]
+                break
+
+        return powers.get(self.fascist_policies, None)
+
+    @property
+    def alive(self) -> list[discord.Member]:
+        return [p for p in self.order if p not in self.dead]
+
     def setup(self) -> None:
+        self.game_over = False
         self.roles: dict[discord.Member, Role] = {}
+        self.dead: set[discord.Member] = set()
         self.hitler: discord.Member | None = None
         self.order: list[discord.Member] = []
         self.previous_government: tuple[
             discord.Member | None, discord.Member | None
         ] = (None, None)
         self.president_index: int = 0
+        self.election_tracker = 0
         self.president: discord.Member | None = None
         self.chancellor: discord.Member | None = None
         self.votes: dict[discord.Member, bool] = {}
@@ -66,12 +124,16 @@ class SecretHitlerGame(GameProtocol):
         self.liberal_policies: int = 0
         self.fascist_policies: int = 0
         self.policy_enacted: bool = False
+        self.last_enacted: Policy | None = None
+        self.special_president: discord.Member | None = None
+        self.investigated: set[discord.Member] = set()
 
     async def run(self) -> None:
         self.order = list(self.manager.players)
+        self.president_index = random.randint(0, len(self.order) - 1)
         players = len(self.order)
-        fascists = math.ceil(players / 2)
-        liberals = players - fascists
+        liberals = players // 2 + 1
+        fascists = players - liberals
         pool = (
             [Role.HITLER] + [Role.FASCIST] * (fascists - 1) + [Role.LIBERAL] * liberals
         )
@@ -80,27 +142,35 @@ class SecretHitlerGame(GameProtocol):
             self.roles[player] = pool.pop()
             if self.roles[player] == Role.HITLER:
                 self.hitler = player
-            e = discord.Embed(title="Role", description=self.roles[player].value)
+            e = discord.Embed(title="Role", description=self.roles[player].label)
             message = await self.manager.send_to_player(player, embed=e)
             if message:
                 await message.pin()
 
-        for player in self.order:
-            if self.roles[player] == Role.FASCIST:
-                fascistEmbed = discord.Embed(title="Your team")
-                if self.hitler:
-                    fascistEmbed.add_field(name="Hitler", value=self.hitler.mention)
-                fascistEmbed.add_field(
-                    name="Your fellow fascists",
-                    value=", ".join(
-                        m.mention
-                        for m, r in self.roles.items()
-                        if r == Role.FASCIST and m != player
-                    ),
-                )
-                await self.manager.send_to_player(player, embed=fascistEmbed)
+        for player, role in self.roles.items():
+            if role == Role.LIBERAL:
+                continue
+            if role == Role.HITLER and players > 6:
+                continue
+            fascistEmbed = discord.Embed(title="Your team")
+            # if self.hitler:
+            #     fascistEmbed.add_field(name="Hitler", value=self.hitler.mention)
+            # fascistEmbed.add_field(
+            #     name="Your fellow fascists",
+            #     value=", ".join(
+            #         m.mention
+            #         for m, r in self.roles.items()
+            #         if r == Role.FASCIST and m != player
+            #     ),
+            # )
+            for m, r in self.roles.items():
+                if m == player:
+                    continue
+                if r.is_fascist():
+                    fascistEmbed.add_field(name=r.label, value=m.mention, inline=False)
+            await self.manager.send_to_player(player, embed=fascistEmbed)
 
-        while True:
+        while not self.game_over:
             await self.get_new_government()
             while self.chancellor is None:
                 await asyncio.sleep(1)
@@ -111,7 +181,55 @@ class SecretHitlerGame(GameProtocol):
             while not self.policy_enacted:
                 await asyncio.sleep(1)
             await self.manager.send(embed=self.make_policy_board_embed())
+            if not self.game_over:
+                await self.use_power(self.president)
             # TODO - Continue game implementation
+
+    async def use_power(self, president: discord.Member) -> None:
+        if self.last_enacted != Policy.FASCIST:
+            return
+        power = self.get_power()
+        if power == Power.EXECUTE:
+            await self.manager.send_to_player(
+                president,
+                embed=discord.Embed(title="Execute a player"),
+                view=ExecuteView(self, president),
+            )
+        elif power == Power.INVESTIGATE:
+            await self.manager.send_to_player(
+                president,
+                embed=discord.Embed(title="Invesigate a player"),
+                view=InvestigateView(self, president),
+            )
+        elif power == Power.SPECIAL:
+            await self.manager.send_to_player(
+                president,
+                embed=discord.Embed(title="Pick the next president"),
+                view=SpecialPresidentView(self, president),
+            )
+        elif power == Power.PEEK:
+            if len(self.policy_deck) < 3:
+                self.policy_deck += self.policy_discard
+                self.policy_discard = []
+                random.shuffle(self.policy_deck)
+            top = self.policy_deck[-3:][::-1]
+            await self.manager.send_to_player(
+                president,
+                embed=discord.Embed(
+                    title="Top 3 policies", description=", ".join(p.label for p in top)
+                ),
+            )
+
+    async def end_game(self, winners: Role, reason: str) -> None:
+        if self.game_over:
+            return
+        self.game_over = True
+        win = discord.Embed(
+            title=f"{winners.label}s win!", description=reason, colour=winners.colour
+        )
+        reveal = "\n".join(f"{p.mention}: {r.label}" for p, r in self.roles.items())
+        win.add_field(name="Roles", value=reveal, inline=False)
+        await self.manager.send(embed=win)
 
     def make_policy_board_embed(self) -> discord.Embed:
         e = discord.Embed(title="Board")
@@ -124,12 +242,16 @@ class SecretHitlerGame(GameProtocol):
         return e
 
     async def select_policies_president(self) -> None:
+        if len(self.policy_deck) < 3:
+            self.policy_deck += self.policy_discard
+            self.policy_discard = []
+            random.shuffle(self.policy_deck)
         policies = draw(3, self.policy_deck)
-        self.policy_discard += policies
+        # self.policy_discard += policies
         e = discord.Embed(title="Discard a policy")
         e.add_field(
             name="Drawn Policies",
-            value=", ".join(policy.value[0] for policy in policies),
+            value=", ".join(policy.label for policy in policies),
         )
         assert self.president
         assert self.chancellor
@@ -145,7 +267,7 @@ class SecretHitlerGame(GameProtocol):
         e = discord.Embed(title="Discard a policy")
         e.add_field(
             name="Passed Policies",
-            value=", ".join(policy.value[0] for policy in available),
+            value=", ".join(policy.label for policy in available),
         )
         assert self.chancellor
         await self.manager.send_to_player(
@@ -163,46 +285,72 @@ class SecretHitlerGame(GameProtocol):
             self.liberal_policies += 1
         else:
             self.fascist_policies += 1
-        e = discord.Embed(title="Enacted Policy", colour=enacted.value[2])
-        e.add_field(name="Policy Type", value=enacted.value[0])
+        e = discord.Embed(title="Enacted Policy", colour=enacted.colour)
+        e.add_field(name="Policy Type", value=enacted.label)
         await self.manager.send(embed=e)
         if self.liberal_policies >= 5:
-            liberalEmbed = discord.Embed(
-                title="Victory!",
-                description="You enacted 5 liberal policies. You Win!",
-                colour=discord.Colour.blue(),
-            )
-            fascistEmbed = discord.Embed(
-                title="Loss...",
-                description="5 liberal policies were enacted. You lose.",
-                colour=discord.Colour.blue(),
-            )
-            neutralEmbed = discord.Embed(
-                title="Liberals win!",
-                description="5 liberal policies were enacted. Liberals win.",
-                colour=discord.Colour.blue(),
-            )
-            await self.manager.send(embed=neutralEmbed, send_to_players=False)
-            for p, r in self.roles.items():
-                if r.is_fascist():
-                    await self.manager.send_to_player(p, embed=fascistEmbed)
-                else:
-                    await self.manager.send_to_player(p, embed=liberalEmbed)
-
+            # liberalEmbed = discord.Embed(
+            #     title="Victory!",
+            #     description="You enacted 5 liberal policies. You Win!",
+            #     colour=discord.Colour.blue(),
+            # )
+            # fascistEmbed = discord.Embed(
+            #     title="Loss...",
+            #     description="5 liberal policies were enacted. You lose.",
+            #     colour=discord.Colour.blue(),
+            # )
+            # neutralEmbed = discord.Embed(
+            #     title="Liberals win!",
+            #     description="5 liberal policies were enacted. Liberals win.",
+            #     colour=discord.Colour.blue(),
+            # )
+            # await self.manager.send(embed=neutralEmbed, send_to_players=False)
+            # for p, r in self.roles.items():
+            #     if r.is_fascist():
+            #         await self.manager.send_to_player(p, embed=fascistEmbed)
+            #     else:
+            #         await self.manager.send_to_player(p, embed=liberalEmbed)
+            await self.end_game(Role.LIBERAL, "5 liberal policies were enacted.")
+        if self.fascist_policies >= 6:
+            await self.end_game(Role.FASCIST, "6 fascist policies were enacted")
+        self.last_enacted = enacted
         self.policy_enacted = True
 
     async def get_new_government(self):
-        self.president_index += 1
-        self.president_index %= len(self.order)
-        self.previous_government = (self.president, self.chancellor)
-        self.president = None
-        self.chancellor = None
+        if self.special_president:
+            self.president = self.special_president
+            self.special_president = None
+        else:
+            i = self.president_index
+            while True:
+                i = (i + 1) % len(self.order)
+                if self.order[i] not in self.dead:
+                    self.president_index = 1
+                    break
+            self.president = self.order[self.president_index]
+        # self.president_index += 1
+        # self.president_index %= len(self.order)
+        # self.previous_government = (self.president, self.chancellor)
+        # self.president = None
+        # self.chancellor = None
         await self.manager.send_to_player(
             self.order[self.president_index],
             self.order[self.president_index].mention,
             embed=discord.Embed(title="Select the next chancellor!"),
             view=PickChancellorView(self, self.order[self.president_index]),
         )
+
+    async def kill(self, target: discord.Member) -> None:
+        self.dead.add(target)
+        await self.manager.send(
+            embed=discord.Embed(
+                title="Execution",
+                description=f"{target.mention} was executed.",
+                colour=discord.Colour.dark_red(),
+            )
+        )
+        if self.roles[target] == Role.HITLER:
+            await self.end_game(Role.LIBERAL, "Hitler was executed")
 
     def make_vote_embed(
         self,
@@ -220,7 +368,8 @@ class SecretHitlerGame(GameProtocol):
     ) -> bool:
         start_time = datetime.datetime.now()
         end_time = start_time + datetime.timedelta(seconds=30)
-        for p in self.order:
+        alive = self.alive
+        for p in alive:
             await self.manager.send_to_player(
                 p,
                 p.mention,
@@ -229,12 +378,28 @@ class SecretHitlerGame(GameProtocol):
             )
         self.votes = {}
         while (
-            len(self.votes) < len(self.order)
-            and time.time() - start_time.timestamp() < 30
+            len(self.votes) < len(alive) and time.time() - start_time.timestamp() < 30
         ):
             await asyncio.sleep(0.1)
         jas = sum([1 for v in self.votes.values() if v])
-        if jas > len(self.order) / 2:
+
+        reveal = discord.Embed(title="Votes")
+        reveal.add_field(
+            name="Ja",
+            value=", ".join(p.display_name for p, v in self.votes.items() if v) or "-",
+        )
+        reveal.add_field(
+            name="Nein",
+            value=", ".join(
+                p.display_name
+                for p, v in self.votes.items()
+                if not self.votes.get(p, False)
+            )
+            or "-",
+        )
+        await self.manager.send(embed=reveal)
+
+        if jas > len(alive) / 2:
             e = discord.Embed(
                 title="Results",
                 description="The vote passes!",
@@ -243,6 +408,7 @@ class SecretHitlerGame(GameProtocol):
             e.add_field(name="President", value=government[0].display_name)
             e.add_field(name="Chancellor", value=government[1].display_name)
             await self.manager.send(embed=e)
+            self.election_tracker = 0
             return True
         else:
             e = discord.Embed(
@@ -251,6 +417,21 @@ class SecretHitlerGame(GameProtocol):
                 colour=discord.Colour.red(),
             )
             await self.manager.send(embed=e)
+            self.election_tracker += 1
+            if self.election_tracker >= 3:
+                self.election_tracker = 0
+                self.previous_government = (None, None)
+                if len(self.policy_deck) < 1:
+                    self.policy_deck += self.policy_discard
+                    self.policy_discard = []
+                    random.shuffle(self.policy_deck)
+                await self.manager.send(
+                    embed=discord.Embed(
+                        title="Chaos!",
+                        description="You failed to elect a government! Top policy enacted.",
+                    )
+                )
+                await self.enact_policy([self.policy_deck.pop()])
             return False
 
     def vote(self, player: discord.Member, ja: bool) -> None:
@@ -263,29 +444,34 @@ class SecretHitlerGame(GameProtocol):
         if ja:
             self.president = president
             self.chancellor = selected_chancellor
+            self.previous_government = (president, selected_chancellor)
             print("Chancellor picked!")
-            if self.roles[selected_chancellor] == Role.HITLER:
-                fascistEmbed = discord.Embed(
-                    title="Victory!",
-                    description="Hitler was elected chancellor. You Win!",
-                    colour=discord.Colour.red(),
-                )
-                liberalEmbed = discord.Embed(
-                    title="Loss...",
-                    description="Hitler was elected chancellor. You lose.",
-                    colour=discord.Colour.red(),
-                )
-                neutralEmbed = discord.Embed(
-                    title="Fascists win!",
-                    description="Hitler was elected chancellor. Fascists win.",
-                    colour=discord.Colour.red(),
-                )
-                await self.manager.send(embed=neutralEmbed, send_to_players=False)
-                for p, r in self.roles.items():
-                    if r.is_fascist():
-                        await self.manager.send_to_player(p, embed=fascistEmbed)
-                    else:
-                        await self.manager.send_to_player(p, embed=liberalEmbed)
+            if (
+                self.roles[selected_chancellor] == Role.HITLER
+                and self.fascist_policies >= 3
+            ):
+                # fascistEmbed = discord.Embed(
+                #     title="Victory!",
+                #     description="Hitler was elected chancellor. You Win!",
+                #     colour=discord.Colour.red(),
+                # )
+                # liberalEmbed = discord.Embed(
+                #     title="Loss...",
+                #     description="Hitler was elected chancellor. You lose.",
+                #     colour=discord.Colour.red(),
+                # )
+                # neutralEmbed = discord.Embed(
+                #     title="Fascists win!",
+                #     description="Hitler was elected chancellor. Fascists win.",
+                #     colour=discord.Colour.red(),
+                # )
+                # await self.manager.send(embed=neutralEmbed, send_to_players=False)
+                # for p, r in self.roles.items():
+                #     if r.is_fascist():
+                #         await self.manager.send_to_player(p, embed=fascistEmbed)
+                #     else:
+                #         await self.manager.send_to_player(p, embed=liberalEmbed)
+                await self.end_game(Role.FASCIST, "Hitler was elected chancellor.")
 
         else:
             await self.get_new_government()
@@ -297,7 +483,7 @@ class DiscardPolicyView(View):
         game: SecretHitlerGame,
         player: discord.Member,
         available_policies: list[Policy],
-        callback: Callable[[list[Policy]], CoroutineType],
+        callback: Callable[[list[Policy]], Awaitable[None]],
     ):
         super().__init__(timeout=None)
         self.game = game
@@ -306,7 +492,7 @@ class DiscardPolicyView(View):
         self.callback = callback
 
         for policy in self.policies:
-            b = Button(label=policy.value[0], emoji="🗑️", style=policy.value[1])
+            b = Button(label=policy.label, emoji="🗑️", style=policy.style)
             b.callback = self._cb(policy)
             self.add_item(b)
 
@@ -316,6 +502,7 @@ class DiscardPolicyView(View):
             await interaction.response.edit_message(view=self)
             policies = self.policies
             policies.remove(policy)
+            self.game.policy_discard.append(policy)
             await self.callback(policies)
 
         return interior
@@ -326,15 +513,12 @@ class PickChancellorView(View):
         super().__init__(timeout=None)
         self.game = game
         self.player = player
+        previous_president, previous_chancellor = game.previous_government
         opts: list[discord.SelectOption] = []
-        for pl in game.order:
-            if (
-                game.previous_government
-                and pl in game.previous_government
-                and len(game.manager.players) > 5
-            ):
+        for pl in game.alive:
+            if player == pl or pl == previous_chancellor:
                 continue
-            if player == pl:
+            if len(game.alive) > 5 and pl == previous_president:
                 continue
             opts.append(discord.SelectOption(label=pl.display_name, value=str(pl.id)))
         sel = discord.ui.Select(options=opts, placeholder="Next Chancellor")
@@ -349,6 +533,84 @@ class PickChancellorView(View):
         self.disable_all_items()
         await interaction.response.edit_message(view=self)
         await self.game.pick_chancellor(self.player, selected_player)
+
+
+class ExecuteView(View):
+    def __init__(self, game: SecretHitlerGame, president: discord.Member):
+        super().__init__(timeout=None)
+        self.game = game
+        opts = [
+            discord.SelectOption(label=p.display_name, value=str(p.id))
+            for p in game.alive
+            if p != president
+        ]
+        sel = discord.ui.Select(options=opts, placeholder="Execute a player")
+        sel.callback = self.cb
+        self.add_item(sel)
+
+    async def cb(self, interaction: discord.Interaction):
+        target_id = int(interaction.data["values"][0])  # type: ignore
+        target = next(p for p in self.game.order if p.id == target_id)
+        self.disable_all_items()
+        await interaction.response.edit_message(view=self)
+        await self.game.kill(target)
+
+
+class InvestigateView(View):
+    def __init__(self, game: SecretHitlerGame, president: discord.Member):
+        super().__init__(timeout=None)
+        self.game = game
+        self.president = president
+        opts = [
+            discord.SelectOption(label=p.display_name, value=str(p.id))
+            for p in game.alive
+            if p not in game.investigated
+        ]
+        sel = discord.ui.Select(options=opts, placeholder="Investigate a player")
+        sel.callback = self.cb
+        self.add_item(sel)
+
+    async def cb(self, interaction: discord.Interaction):
+        target_id = int(interaction.data["values"][0])  # type: ignore
+        target = next(p for p in self.game.order if p.id == target_id)
+        self.game.investigated.add(target)
+        party = "Fascist" if self.game.roles[target].is_fascist() else "Liberal"
+        await self.game.manager.send_to_player(
+            self.president,
+            embed=discord.Embed(
+                title="Investigation", description=f"{target.mention} is a **{party}**."
+            ),
+        )
+        await self.game.manager.send(
+            embed=discord.Embed(
+                description=f"{self.president.display_name} investigated {target.display_name}."
+            )
+        )
+
+
+class SpecialPresidentView(View):
+    def __init__(self, game: SecretHitlerGame, president: discord.Member):
+        super().__init__(timeout=None)
+        self.game = game
+        self.president = president
+        opts = [
+            discord.SelectOption(label=p.display_name, value=str(p.id))
+            for p in game.alive
+            if p != president
+        ]
+        sel = discord.ui.Select(options=opts, placeholder="Pick the next president")
+        sel.callback = self.cb
+        self.add_item(sel)
+
+    async def cb(self, interaction: discord.Interaction):
+        target_id = int(interaction.data["values"][0])  # type: ignore
+        target = next(p for p in self.game.order if p.id == target_id)
+        self.game.special_president = target
+        await self.game.manager.send(
+            embed=discord.Embed(
+                description=f"Special election: {target.mention} is the next president."
+            )
+        )
 
 
 # class StartVoteView(View):
