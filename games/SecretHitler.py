@@ -6,6 +6,7 @@ import random
 import time
 from collections.abc import Awaitable, Callable
 from enum import Enum
+from typing import ClassVar
 
 import discord
 from discord.ui import Button, View, button
@@ -75,7 +76,7 @@ class SecretHitlerGame(GameProtocol):
     maxPlayers = 10
     # needsVoice = True
 
-    POWERS = {
+    POWERS: ClassVar[dict[range, dict[int, Power]]] = {
         range(7): {3: Power.PEEK, 4: Power.EXECUTE, 5: Power.EXECUTE},
         range(7, 9): {
             2: Power.INVESTIGATE,
