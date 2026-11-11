@@ -9,7 +9,7 @@ from typing import Generic, TypeVar
 import discord
 from discord.ui import View
 
-from games.GameProtocol import GameProtocol
+from games.GameProtocol import GameConfig, GameProtocol
 
 T = TypeVar("T")
 
@@ -68,6 +68,18 @@ class WerewolfGame(GameProtocol):
 
         self.night_targets: dict[Role, discord.Member | None] = {}
         self.day_votes: dict[discord.Member, discord.Member] = {}
+
+        self.discussion_time = 45
+        self.config = GameConfig().add_option(
+            name="Discussion Time",
+            options=[30, 45, 60, 90],
+            callback=self.set_discussion_time,
+            default=45,
+            input_type="Button",
+        )
+
+    def set_discussion_time(self, seconds: int):
+        self.discussion_time = seconds
 
     async def get_target(
         self,
@@ -178,14 +190,16 @@ class WerewolfGame(GameProtocol):
     async def run_day_phase(self):
         self.phase = GamePhase.DAY_DISCUSSION
         await self.manager.send(
-            "🗣️ **Discussion:**\nYou have 45 seconds to debate who the werewolves are.",
+            f"🗣️ **Discussion:**\nYou have {self.discussion_time} seconds to debate who the werewolves are.",
             embed=discord.Embed(
                 description=discord.utils.format_dt(
-                    datetime.datetime.now() + datetime.timedelta(seconds=45), style="R"
+                    datetime.datetime.now()
+                    + datetime.timedelta(seconds=self.discussion_time),
+                    style="R",
                 )
             ),
         )
-        await asyncio.sleep(45)
+        await asyncio.sleep(self.discussion_time)
 
         self.phase = GamePhase.DAY_VOTING
         await self.manager.send("⚖️ **Voting:**\nCast your vote to lynch someone.")

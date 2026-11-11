@@ -8,7 +8,7 @@ from enum import Enum
 import discord
 from discord.ui import Button, Select, View
 
-from .GameProtocol import GameProtocol
+from .GameProtocol import GameConfig, GameProtocol
 
 
 class Colour(Enum):
@@ -83,6 +83,18 @@ class UnoGame(GameProtocol):
         self.lock = asyncio.Lock()
         self.table_view = None
 
+        self.starting_hand_size = 7
+        self.config = GameConfig().add_option(
+            name="Starting Hand Size",
+            options=[5, 7, 10],
+            callback=self.set_hand_size,
+            default=7,
+            input_type='Button'
+        )
+
+    def set_hand_size(self, size: int):
+        self.starting_hand_size = size
+
     @property
     def current(self) -> discord.Member:
         return self.order[self.turn]
@@ -111,7 +123,7 @@ class UnoGame(GameProtocol):
         random.shuffle(self.deck)
         self.order = list(self.manager.players)
         random.shuffle(self.order)
-        self.hands = {p: self.draw(7) for p in self.order}
+        self.hands = {p: self.draw(self.starting_hand_size) for p in self.order}
         while True:
             top = self.deck.pop()
             if top.colour != Colour.WILD:

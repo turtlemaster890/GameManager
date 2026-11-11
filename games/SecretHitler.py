@@ -11,7 +11,7 @@ from typing import ClassVar
 import discord
 from discord.ui import Button, View, button
 
-from .GameProtocol import GameProtocol
+from .GameProtocol import GameConfig, GameProtocol
 
 # TODO - Make embeds nicer
 
@@ -128,6 +128,18 @@ class SecretHitlerGame(GameProtocol):
         self.last_enacted: Policy | None = None
         self.special_president: discord.Member | None = None
         self.investigated: set[discord.Member] = set()
+
+        self.vote_time = 30
+        self.config = GameConfig().add_option(
+            name="Vote Time",
+            options=[20, 30, 45, 60],
+            callback=self.set_vote_time,
+            default=30,
+            input_type='Button'
+        )
+
+    def set_vote_time(self, seconds: int):
+        self.vote_time = seconds
 
     async def run(self) -> None:
         self.order = list(self.manager.players)
@@ -368,7 +380,7 @@ class SecretHitlerGame(GameProtocol):
         self, government: tuple[discord.Member, discord.Member]
     ) -> bool:
         start_time = datetime.datetime.now()
-        end_time = start_time + datetime.timedelta(seconds=30)
+        end_time = start_time + datetime.timedelta(seconds=self.vote_time)
         alive = self.alive
         for p in alive:
             await self.manager.send_to_player(
@@ -379,7 +391,7 @@ class SecretHitlerGame(GameProtocol):
             )
         self.votes = {}
         while (
-            len(self.votes) < len(alive) and time.time() - start_time.timestamp() < 30
+            len(self.votes) < len(alive) and time.time() - start_time.timestamp() < self.vote_time
         ):
             await asyncio.sleep(0.1)
         jas = sum([1 for v in self.votes.values() if v])

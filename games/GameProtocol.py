@@ -137,9 +137,9 @@ class GameConfig:
     def add_option(self, *, option: ConfigEntry) -> Self: ...
 
     @overload
-    def add_option(self, *, name: str, options: list[T], callback: Callable[[T], None], default: T | None = None, input_type: InputType = 'Select') -> Self: ...
+    def add_option(self, *, name: str, options: list[T], callback: Callable[[T], Any], default: T | None = None, input_type: InputType = 'Select') -> Self: ...
 
-    def add_option(self, *, option: ConfigEntry | None = None, name: str | None = None, options: list[T] | None = None, callback: Callable[[T], None] | None = None, default: T | None = None, input_type: InputType = 'Select') -> Self:
+    def add_option(self, *, option: ConfigEntry | None = None, name: str | None = None, options: list[T] | None = None, callback: Callable[[T], Any] | None = None, default: T | None = None, input_type: InputType = 'Select') -> Self:
         if option:
             self.configs.append(option)
             return self
