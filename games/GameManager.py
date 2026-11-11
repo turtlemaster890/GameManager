@@ -7,7 +7,7 @@ import discord
 from discord.interactions import Interaction
 from discord.ui import Button, View, ViewItem, button
 
-from .GameProtocol import GameProtocol
+from .GameProtocol import ConfigHomeView, GameProtocol
 
 
 class LobbyView(View):
@@ -70,6 +70,19 @@ class LobbyView(View):
             return
         await interaction.response.defer(invisible=True)
         await self.manager.start_game(interaction, self.manager.cat)
+
+    @button(label="Config", style=discord.ButtonStyle.gray)
+    async def config(self, button: Button, interaction: Interaction):
+        if interaction.user != self.manager.host:
+            await interaction.response.send_message(
+                "You're not the host of this lobby!", ephemeral=True
+            )
+
+        assert self.manager.host
+        view = ConfigHomeView(self.manager.game.config, self.manager.host)
+        await interaction.response.send_message(
+            "Choose a setting to configure:", view=view, ephemeral=True
+        )
 
     @button(label="Close", style=discord.ButtonStyle.gray, custom_id="lobby:close")
     async def close_lobby(self, button: Button, interaction: Interaction):
@@ -262,7 +275,9 @@ class GameManager:
         view: discord.ui.View | None = None,
     ) -> discord.Message:
         if embed is not None and view is not None:
-            return await channel.send(content=content, embed=embed, view=view, silent=True)
+            return await channel.send(
+                content=content, embed=embed, view=view, silent=True
+            )
         elif embed is not None:
             return await channel.send(content=content, embed=embed, silent=True)
         elif view is not None:
