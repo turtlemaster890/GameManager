@@ -28,7 +28,7 @@ class GamePhase(Enum):
 
 
 class WerewolfGame(GameProtocol):
-    name = "werewolf"
+    name = "Werewolf"
     minPlayers = 5
 
     def assign_roles(self):
@@ -38,7 +38,12 @@ class WerewolfGame(GameProtocol):
         num_players = len(plrs)
         num_wolves = max(1, num_players // 4)
 
-        special_roles = [Role.SEER, Role.MEDIC]
+        special_roles: list[Role] = []
+        if self.include_seer:
+            special_roles.append(Role.SEER)
+        if self.include_medic:
+            special_roles.append(Role.MEDIC)
+
         for i, plr in enumerate(plrs):
             if i < num_wolves:
                 self.roles[plr] = Role.WEREWOLF
@@ -70,12 +75,27 @@ class WerewolfGame(GameProtocol):
         self.day_votes: dict[discord.Member, discord.Member] = {}
 
         self.discussion_time = 45
+        self.include_seer = True
+        self.include_medic = True
+
         self.config = GameConfig().add_option(
             name="Discussion Time",
             options=[30, 45, 60, 90],
             callback=self.set_discussion_time,
             default=45,
             input_type="Button",
+        ).add_option(
+            name="Include Seer",
+            options=[True, False],
+            callback=lambda v: setattr(self, "include_seer", v),
+            default=True,
+            input_type='Button'
+        ).add_option(
+            name="Include Medic",
+            options=[True, False],
+            callback=lambda v: setattr(self, "include_medic", v),
+            default=True,
+            input_type='Button'
         )
 
     def set_discussion_time(self, seconds: int):

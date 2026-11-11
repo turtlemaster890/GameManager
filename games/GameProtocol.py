@@ -39,17 +39,28 @@ class GameProtocol(Protocol):
 
     async def run(self) -> None: ...
 
+
 T = TypeVar("T")
 
-InputType = Literal['Freeform', 'Select', 'Button']
+InputType = Literal["Freeform", "Select", "Button"]
+
 
 class ConfigSelectView(View):
-    def __init__(self, host: discord.Member, options: list[T], callback: Callable[[T], None], default: str = ""):
+    def __init__(
+        self,
+        host: discord.Member,
+        options: list[T],
+        callback: Callable[[T], None],
+        default: str = "",
+    ):
         super().__init__(timeout=None)
         self.host = host
         self.callback = callback
         self.options = options
-        opts = [discord.SelectOption(label=str(opt), value=str(i)) for i, opt in enumerate(options)]
+        opts = [
+            discord.SelectOption(label=str(opt), value=str(i))
+            for i, opt in enumerate(options)
+        ]
         sel = discord.ui.Select(options=opts, placeholder=default)
         sel.callback = self._cb
         self.add_item(sel)
@@ -61,11 +72,15 @@ class ConfigSelectView(View):
         return True
 
     async def _cb(self, interaction: discord.Interaction):
-        i = int(interaction.data['values'][0]) # type: ignore
+        i = int(interaction.data["values"][0])  # type: ignore
         self.callback(self.options[i])
+        await interaction.response.defer(ephemeral=True)
+
 
 class ConfigButtonView(View):
-    def __init__(self, host: discord.Member, options: list[T], callback: Callable[[T], None]):
+    def __init__(
+        self, host: discord.Member, options: list[T], callback: Callable[[T], None]
+    ):
         super().__init__(timeout=None)
         self.host = host
         self.callback = callback
@@ -82,11 +97,18 @@ class ConfigButtonView(View):
         return True
 
     async def _cb(self, interaction: discord.Interaction):
-        i = int(interaction.data['custom_id']) # type: ignore
+        i = int(interaction.data["custom_id"])  # type: ignore
         self.callback(self.options[i])
+        await interaction.response.defer(ephemeral=True)
+
 
 class ConfigFreeformView(Modal):
-    def __init__(self, host: discord.Member, callback: Callable[[Any], None], caster: Callable[[str], Any] | None = None):
+    def __init__(
+        self,
+        host: discord.Member,
+        callback: Callable[[Any], None],
+        caster: Callable[[str], Any] | None = None,
+    ):
         super().__init__(title="Config")
         self.host = host
         self.cb = callback
@@ -95,13 +117,16 @@ class ConfigFreeformView(Modal):
         self.add_item(discord.ui.InputText(label="Option"))
 
     async def callback(self, interaction: discord.Interaction):
-        raw_value = self.children[0].value # type: ignore
+        raw_value = self.children[0].value  # type: ignore
         assert raw_value
         try:
             value = self.caster(raw_value) if self.caster else raw_value
             self.cb(value)
+            await interaction.response.defer(ephemeral=True)
         except ValueError:
-            await interaction.response.send_message("Invalid input type. Please try again.", ephemeral=True)
+            await interaction.response.send_message(
+                "Invalid input type. Please try again.", ephemeral=True
+            )
 
 
 @dataclass
@@ -110,7 +135,7 @@ class ConfigEntry(Generic[T]):
     options: list[T]
     callback: Callable[[T], None]
     default: T | None = None
-    input_type: InputType = 'Select'
+    input_type: InputType = "Select"
 
     def __post_init__(self):
         if self.default:
@@ -118,11 +143,16 @@ class ConfigEntry(Generic[T]):
 
     def create_view(self, host: discord.Member) -> View | Modal:
         match self.input_type:
-            case 'Select':
-                view = ConfigSelectView(host, self.options, self.callback, str(self.default) if self.default else "")
-            case 'Button':
+            case "Select":
+                view = ConfigSelectView(
+                    host,
+                    self.options,
+                    self.callback,
+                    str(self.default) if self.default else "",
+                )
+            case "Button":
                 view = ConfigButtonView(host, self.options, self.callback)
-            case 'Freeform':
+            case "Freeform":
                 caster = type(self.default) if self.default is not None else str
                 view = ConfigFreeformView(host, self.callback, caster=caster)
 
@@ -137,21 +167,35 @@ class GameConfig:
     def add_option(self, *, option: ConfigEntry) -> Self: ...
 
     @overload
-    def add_option(self, *, name: str, options: list[T], callback: Callable[[T], Any], default: T | None = None, input_type: InputType = 'Select') -> Self: ...
+    def add_option(
+        self,
+        *,
+        name: str,
+        options: list[T],
+        callback: Callable[[T], Any],
+        default: T | None = None,
+        input_type: InputType = "Select",
+    ) -> Self: ...
 
-    def add_option(self, *, option: ConfigEntry | None = None, name: str | None = None, options: list[T] | None = None, callback: Callable[[T], Any] | None = None, default: T | None = None, input_type: InputType = 'Select') -> Self:
+    def add_option(
+        self,
+        *,
+        option: ConfigEntry | None = None,
+        name: str | None = None,
+        options: list[T] | None = None,
+        callback: Callable[[T], Any] | None = None,
+        default: T | None = None,
+        input_type: InputType = "Select",
+    ) -> Self:
         if option:
             self.configs.append(option)
             return self
         assert name
         assert options
         assert callback
-        self.configs.append(
-            ConfigEntry(
-                name, options, callback, default, input_type
-            )
-        )
+        self.configs.append(ConfigEntry(name, options, callback, default, input_type))
         return self
+
 
 class ConfigMenuSelect(discord.ui.Select):
     def __init__(self, config: GameConfig, host: discord.Member):
@@ -163,10 +207,15 @@ class ConfigMenuSelect(discord.ui.Select):
             for i, entry in enumerate(config.configs)
         ]
 
-        super().__init__(placeholder="Select a configuration option to edit...", min_values=1, max_values=1, options=options)
+        super().__init__(
+            placeholder="Select a configuration option to edit...",
+            min_values=1,
+            max_values=1,
+            options=options,
+        )
 
     async def callback(self, interaction: discord.Interaction):
-        index = int(self.values[0]) # type: ignore
+        index = int(self.values[0])  # type: ignore
         entry = self.config_manager.configs[index]
 
         view_or_modal = entry.create_view(self.host)
@@ -175,9 +224,9 @@ class ConfigMenuSelect(discord.ui.Select):
             await interaction.response.send_modal(view_or_modal)
         else:
             await interaction.response.edit_message(
-                content=f"**Configuring `{entry.name}`:**",
-                view=view_or_modal
+                content=f"**Configuring `{entry.name}`:**", view=view_or_modal
             )
+
 
 class ConfigHomeView(View):
     def __init__(self, config: GameConfig, host: discord.Member):
