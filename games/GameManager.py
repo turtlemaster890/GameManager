@@ -107,6 +107,7 @@ class GameManager:
         self,
         game: type[GameProtocol],
         cat: discord.CategoryChannel,
+        win_channel: discord.TextChannel | None,
         host: discord.Member | None = None,
     ):
         self.players: set[discord.Member] = set()
@@ -119,11 +120,20 @@ class GameManager:
         self.host = host
         self.on_close: Callable[[], None] | None = None
         self.cat = cat
+        self.win_channel = win_channel
         self.cat_channel: discord.TextChannel | None = None
         self.player_channels: dict[discord.Member, discord.TextChannel] = {}
         if host:
             self.add_player(host)
         self.game = game(self)
+
+    async def send_win(self, players: list[discord.Member], message: str | None = None):
+        if not self.win_channel:
+            return
+        if len(players) == 1:
+            await self.win_channel.send(f"{players[0]} wins!{f'\n{message}' if message else ''}")
+        else:
+            await self.win_channel.send(f"{', '.join([p.display_name for p in players])} win!{f'\n{message}' if message else ''}")
 
     def add_player(self, player: discord.Member):
         self.players.add(player)

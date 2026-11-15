@@ -191,7 +191,6 @@ class WerewolfGame(GameProtocol):
                 player, f"**{target.display_name}** is a {self.roles[target].value}"
             )
 
-        death = None
         if victim and self.alive[victim]:
             if protected and protected == victim:
                 await self.manager.send(

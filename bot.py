@@ -45,13 +45,15 @@ class GameBot:
                 return
             assert ctx.guild
             category = ctx.guild.get_channel(guild_data["category_channel"])
+            win_channel = ctx.guild.get_channel(guild_data.get("win_channel", -1))
+            assert isinstance(win_channel, discord.TextChannel | None)
             if not category:
                 await ctx.response.send_message(
                     "Games category not set properly - please retry", ephemeral=True
                 )
                 return
             assert isinstance(category, discord.CategoryChannel)
-            manager = GameManager(game.value, category, ctx.user)
+            manager = GameManager(game.value, category, win_channel, ctx.user)
             manager.on_close = lambda: self.managers.discard(manager)
             self.managers.add(manager)
             await manager.send_embed(ctx)
@@ -74,5 +76,24 @@ class GameBot:
             with open("guild_data.json", "w") as f:
                 json.dump(data, f, indent=4)
             await ctx.response.send_message("Category channel set!", ephemeral=True)
+
+        @bot.slash_command(
+            name="set_win_channel",
+            description="Set the channel for wins to be announced in.",
+            guild_ids=[1327416677863784508],
+        )
+        @discord.option("channel", discord.TextChannel)
+        async def set_win_channel(
+            ctx: discord.ApplicationContext, channel: discord.TextChannel
+        ):
+            try:
+                with open("guild_data.json", "r") as f:
+                    data: dict[str, dict] = json.load(f)
+            except OSError:
+                data = {}
+            data.setdefault(str(ctx.guild_id), {})["win_channel"] = channel.id
+            with open("guild_data.json", "w") as f:
+                json.dump(data, f, indent=4)
+            await ctx.response.send_message("Win channel set!", ephemeral=True)
 
         return bot
