@@ -190,9 +190,9 @@ class GameConfig:
         if option:
             self.configs.append(option)
             return self
-        assert name
-        assert options
-        assert callback
+        assert name is not None
+        assert options is not None
+        assert callback is not None
         self.configs.append(ConfigEntry(name, options, callback, default, input_type))
         return self
 
