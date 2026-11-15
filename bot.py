@@ -21,7 +21,7 @@ class GameBot:
         @bot.slash_command(
             name="gameroom",
             description="Make a game room",
-            guild_ids=[1327416677863784508],
+            # guild_ids=[1327416677863784508],
         )
         @discord.option("game", Games)
         async def make_room(ctx: discord.ApplicationContext, game: Games):
@@ -61,7 +61,7 @@ class GameBot:
         @bot.slash_command(
             name="set_games_category",
             description="Set the category for games to be played in.",
-            guild_ids=[1327416677863784508],
+            # guild_ids=[1327416677863784508],
         )
         @discord.option("category", discord.CategoryChannel)
         async def set_category(
@@ -80,7 +80,7 @@ class GameBot:
         @bot.slash_command(
             name="set_win_channel",
             description="Set the channel for wins to be announced in.",
-            guild_ids=[1327416677863784508],
+            # guild_ids=[1327416677863784508],
         )
         @discord.option("channel", discord.TextChannel)
         async def set_win_channel(
